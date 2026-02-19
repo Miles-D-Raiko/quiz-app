@@ -1,0 +1,224 @@
+{
+  "quiz_title": "Python Programming Beginner Assessment",
+  "category": "Python Programing Language",
+  "questions": [
+    {
+      "question": "Which keyword is used to define a function in Python?",
+      "options": [
+        "func",
+        "define",
+        "def",
+        "function"
+      ],
+      "correct": "def",
+      "explanation": "In Python, functions are defined using the 'def' keyword."
+    },
+    {
+      "question": "What is the correct file extension for Python files?",
+      "options": [
+        ".pt",
+        ".pyt",
+        ".py",
+        ".python"
+      ],
+      "correct": ".py",
+      "explanation": "Python files use the .py extension."
+    },
+    {
+      "question": "Which data type is used to store text in Python?",
+      "options": [
+        "int",
+        "str",
+        "float",
+        "bool"
+      ],
+      "correct": "str",
+      "explanation": "The 'str' data type is used to store text."
+    },
+    {
+      "question": "What will print(2 + 3) output?",
+      "options": [
+        "23",
+        "6",
+        "5",
+        "Error"
+      ],
+      "correct": "5",
+      "explanation": "2 + 3 equals 5."
+    },
+    {
+      "question": "Which symbol is used for single-line comments in Python?",
+      "options": [
+        "//",
+        "#",
+        "/*",
+        "--"
+      ],
+      "correct": "#",
+      "explanation": "The '#' symbol is used for single-line comments."
+    },
+    {
+      "question": "Which of the following is a Python list?",
+      "options": [
+        "{1, 2, 3}",
+        "(1, 2, 3)",
+        "[1, 2, 3]",
+        "<1, 2, 3>"
+      ],
+      "correct": "[1, 2, 3]",
+      "explanation": "Lists in Python are created using square brackets."
+    },
+    {
+      "question": "How do you start a for loop in Python?",
+      "options": [
+        "for(i=0; i<5; i++)",
+        "loop i in range(5):",
+        "for i in range(5):",
+        "foreach i in range(5)"
+      ],
+      "correct": "for i in range(5):",
+      "explanation": "Python uses 'for i in range():' syntax for loops."
+    },
+    {
+      "question": "Which function is used to display output in Python?",
+      "options": [
+        "print()",
+        "echo()",
+        "output()",
+        "write()"
+      ],
+      "correct": "print()",
+      "explanation": "The print() function displays output to the screen."
+    },
+    {
+      "question": "What is the result of 10 // 3 in Python?",
+      "options": [
+        "3.33",
+        "3",
+        "4",
+        "3.0"
+      ],
+      "correct": "3",
+      "explanation": "'//' performs integer (floor) division."
+    },
+    {
+      "question": "Which keyword is used for conditional statements?",
+      "options": [
+        "if",
+        "when",
+        "switch",
+        "case"
+      ],
+      "correct": "if",
+      "explanation": "The 'if' keyword is used to create conditional statements."
+    },
+    {
+      "question": "True or False: Python is case-sensitive.",
+      "options": [
+        "False",
+        "True"
+      ],
+      "correct": "True",
+      "explanation": "Python is case-sensitive, meaning 'Var' and 'var' are different."
+    },
+    {
+      "question": "Which of these is a boolean value in Python?",
+      "options": [
+        "true",
+        "TRUE",
+        "True",
+        "Yes"
+      ],
+      "correct": "True",
+      "explanation": "Boolean values in Python are 'True' and 'False' (capitalized)."
+    },
+    {
+      "question": "How do you create a variable in Python?",
+      "options": [
+        "int x = 5",
+        "x = 5",
+        "var x = 5",
+        "declare x = 5"
+      ],
+      "correct": "x = 5",
+      "explanation": "Variables are created by assigning a value using '='."
+    },
+    {
+      "question": "Which operator is used for multiplication?",
+      "options": [
+        "x",
+        "*",
+        "%",
+        "#"
+      ],
+      "correct": "*",
+      "explanation": "The '*' symbol is used for multiplication."
+    },
+    {
+      "question": "What does len() function do?",
+      "options": [
+        "Deletes data",
+        "Returns the length",
+        "Converts to integer",
+        "Prints output"
+      ],
+      "correct": "Returns the length",
+      "explanation": "len() returns the number of items in an object."
+    },
+    {
+      "question": "Which collection type is immutable?",
+      "options": [
+        "list",
+        "dictionary",
+        "tuple",
+        "set"
+      ],
+      "correct": "tuple",
+      "explanation": "Tuples are immutable, meaning they cannot be changed after creation."
+    },
+    {
+      "question": "What keyword is used to create a class in Python?",
+      "options": [
+        "function",
+        "object",
+        "class",
+        "define"
+      ],
+      "correct": "class",
+      "explanation": "The 'class' keyword is used to define a class."
+    },
+    {
+      "question": "Which method converts a string to lowercase?",
+      "options": [
+        "lowercase()",
+        "tolower()",
+        "lower()",
+        "small()"
+      ],
+      "correct": "lower()",
+      "explanation": "The lower() method converts all characters in a string to lowercase."
+    },
+    {
+      "question": "What is the output of type(5)?",
+      "options": [
+        "<class 'int'>",
+        "integer",
+        "int",
+        "<type int>"
+      ],
+      "correct": "<class 'int'>",
+      "explanation": "type(5) returns <class 'int'>."
+    },
+    {
+      "question": "Which statement is used to stop a loop?",
+      "options": [
+        "exit",
+        "stop",
+        "return",
+        "break"
+      ],
+      "correct": "break",
+      "explanation": "The 'break' statement is used to exit a loop."
+    }
+  ]
+}

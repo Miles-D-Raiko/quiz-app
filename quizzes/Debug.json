@@ -1,0 +1,26 @@
+{
+  "quiz_title": "Debug Test",
+  "category": "Python Programing Language",
+  "questions": [
+    {
+      "question": "Test Q1 - should show 4 options",
+      "options": [
+        "Apple",
+        "Banana",
+        "Cherry",
+        "Date"
+      ],
+      "correct": "Banana",
+      "explanation": "Banana is correct"
+    },
+    {
+      "question": "Test Q2 - true/false style",
+      "options": [
+        "True",
+        "False"
+      ],
+      "correct": "True",
+      "explanation": "Just a demo"
+    }
+  ]
+}
