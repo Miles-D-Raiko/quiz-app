@@ -298,7 +298,7 @@ def take_quiz_section():
 # ───────────────────────────────────────────────
 # Main Layout
 # ───────────────────────────────────────────────
-st.title("📝 Quiz App – Categories & Departments")
+st.title("NextGen Devops")
 
 with st.sidebar:
     if not is_admin():
@@ -319,7 +319,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.header("Filter by Department")
+    st.header("Filter by Courses")
     categories = get_all_categories()
     if categories:
         st.session_state.selected_categories = st.multiselect(
