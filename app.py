@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from datetime import datetime, timedelta
 import time
+import random
 
 # ───────────────────────────────────────────────
 # Paths & Session State
@@ -14,7 +15,7 @@ QUIZZES_DIR.mkdir(exist_ok=True)
 defaults = {
     'quizzes': {},
     'selected_quiz': None,
-    'user_answers': {},
+    'user_answers': {},                     # user choice index in displayed options
     'show_answers': False,
     'score': None,
     'quiz_start_time': None,
@@ -23,6 +24,10 @@ defaults = {
     'reveal_correct_answers': False,
     'selected_categories': [],
     'admin_logged_in': False,
+
+    # ── New keys for shuffling ────────────────────────
+    'shuffled_questions': None,             # list of shuffled question dicts
+    'option_shuffles': {},                  # {question_original_index: list of original indices after shuffle}
 }
 
 for k, v in defaults.items():
@@ -30,7 +35,7 @@ for k, v in defaults.items():
         st.session_state[k] = v
 
 # ───────────────────────────────────────────────
-# Admin helpers
+# Admin helpers (unchanged)
 # ───────────────────────────────────────────────
 
 ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or use st.secrets!
@@ -52,7 +57,7 @@ def delete_quiz(title):
         st.error("Quiz file not found.")
 
 # ───────────────────────────────────────────────
-# Load / Save / Categories
+# Load / Save / Categories (unchanged)
 # ───────────────────────────────────────────────
 def load_quizzes():
     st.session_state.quizzes.clear()
@@ -83,7 +88,7 @@ def save_quiz(title, data):
     load_quizzes()
 
 # ───────────────────────────────────────────────
-# Add new quiz (admin only)
+# Add new quiz (admin only) — unchanged
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -150,16 +155,41 @@ def submit_quiz_section():
                 st.error(f"Error: {e}")
 
 # ───────────────────────────────────────────────
-# Take quiz – stable widgets + smoother timer
+# Take quiz – with question shuffle & option shuffle
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
     title = quiz.get('quiz_title', st.session_state.selected_quiz)
     category = quiz.get('category', 'Uncategorized')
-    questions = quiz.get("questions", [])
+    original_questions = quiz.get("questions", [])
 
     st.header(f"Quiz: {title}")
     st.caption(f"Category / Department: **{category}**")
+
+    # ── Prepare shuffled data when starting or restarting ──────────────
+    if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
+        # Reset shuffle when quiz is not started yet
+        st.session_state.shuffled_questions = None
+        st.session_state.option_shuffles = {}
+
+    # Create shuffled versions only once per attempt
+    if st.session_state.shuffled_questions is None and original_questions:
+        # Shuffle question order
+        shuffled_idx = list(range(len(original_questions)))
+        random.shuffle(shuffled_idx)
+        st.session_state.shuffled_questions = [original_questions[i] for i in shuffled_idx]
+
+        # For each question, shuffle options & remember mapping
+        st.session_state.option_shuffles = {}
+        for orig_i, q in enumerate(original_questions):
+            opts = q.get("options", [])
+            if not opts:
+                continue
+            opt_indices = list(range(len(opts)))
+            random.shuffle(opt_indices)
+            st.session_state.option_shuffles[orig_i] = opt_indices
+
+    shuffled_questions = st.session_state.shuffled_questions or original_questions
 
     timer_placeholder = st.empty()
 
@@ -194,58 +224,60 @@ def take_quiz_section():
             timer_placeholder.caption(f"⏳ **Time remaining: {mins:02d}:{secs:02d}**")
             timer_running = True
 
-    for i, q in enumerate(questions):
-        st.subheader(f"Q{i+1}. {q.get('question', '—')}")
+    # ── Display shuffled questions ─────────────────────────────────────
+    for display_i, q in enumerate(shuffled_questions):
+        st.subheader(f"Q{display_i+1}. {q.get('question', '—')}")
 
-        opts = q.get("options", [])
-        correct = q.get("correct")
-        explanation = q.get("explanation", "")
+        original_index = original_questions.index(q)  # find original position
+        opts_original = q.get("options", [])
+        correct_original = q.get("correct")
 
-        if not opts:
-            st.error(f"Q{i+1}: Missing or empty 'options' list")
-            continue
-        if correct is None:
-            st.error(f"Q{i+1}: Missing 'correct' key")
-            continue
-        if correct not in opts:
-            st.error(f"Q{i+1}: 'correct' value '{correct}' does not match any option → options are: {opts}")
+        if not opts_original or correct_original not in opts_original:
+            st.error(f"Q{display_i+1}: Invalid question data")
             continue
 
-        key = f"answer_q_{i}"
+        # Get shuffled options for this question
+        shuffle_map = st.session_state.option_shuffles.get(original_index, list(range(len(opts_original))))
+        opts_displayed = [opts_original[j] for j in shuffle_map]
+
+        key = f"answer_display_{display_i}"
 
         if not st.session_state.show_answers and not st.session_state.timer_expired:
             choice = st.radio(
                 "Your answer:",
-                opts,
-                index=st.session_state.user_answers.get(i, None),
+                opts_displayed,
+                index=st.session_state.user_answers.get(display_i, None),
                 key=key,
                 horizontal=False
             )
             if choice is not None:
-                st.session_state.user_answers[i] = opts.index(choice)
+                # Store index in displayed list
+                st.session_state.user_answers[display_i] = opts_displayed.index(choice)
         else:
-            user_idx = st.session_state.user_answers.get(i, None)
-            correct_idx = opts.index(correct) if correct in opts else -1
+            # Review mode
+            user_display_idx = st.session_state.user_answers.get(display_i, None)
+            correct_display_idx = shuffle_map.index(opts_original.index(correct_original))
 
             st.radio(
                 "Your selection (review)",
-                opts,
-                index=user_idx if user_idx is not None else 0,
+                opts_displayed,
+                index=user_display_idx if user_display_idx is not None else 0,
                 key=f"review_{key}",
                 disabled=True,
                 horizontal=True
             )
 
             if st.session_state.reveal_correct_answers:
-                if user_idx is None:
+                if user_display_idx is None:
                     st.warning("Skipped")
-                    st.markdown(f"**Correct:** {correct}")
-                elif user_idx == correct_idx:
+                    st.markdown(f"**Correct:** {correct_original}")
+                elif user_display_idx == correct_display_idx:
                     st.success("Correct ✓")
                 else:
                     st.error("Incorrect ✗")
-                    st.markdown(f"**Correct:** {correct}")
+                    st.markdown(f"**Correct:** {correct_original}")
 
+                explanation = q.get("explanation", "")
                 if explanation:
                     with st.expander("Explanation"):
                         st.write(explanation)
@@ -256,12 +288,19 @@ def take_quiz_section():
 
     if not quiz_ended:
         if st.button("Submit Quiz", type="primary"):
-            correct_count = sum(
-                1 for i, q in enumerate(questions)
-                if st.session_state.user_answers.get(i) is not None
-                and q["options"][st.session_state.user_answers[i]] == q["correct"]
-            )
-            st.session_state.score = (correct_count, len(questions))
+            correct_count = 0
+            for display_i, q in enumerate(shuffled_questions):
+                orig_i = original_questions.index(q)
+                user_display_idx = st.session_state.user_answers.get(display_i)
+                if user_display_idx is None:
+                    continue
+
+                shuffle_map = st.session_state.option_shuffles.get(orig_i, [])
+                user_original_idx = shuffle_map[user_display_idx]
+                if q["options"][user_original_idx] == q["correct"]:
+                    correct_count += 1
+
+            st.session_state.score = (correct_count, len(shuffled_questions))
             st.session_state.show_answers = True
             st.rerun()
     else:
@@ -282,13 +321,15 @@ def take_quiz_section():
 
     if quiz_ended:
         if st.button("Restart this quiz"):
+            # Reset everything including shuffles
             for k in ['user_answers', 'show_answers', 'score', 'quiz_start_time',
-                      'time_limit_minutes', 'timer_expired', 'reveal_correct_answers']:
+                      'time_limit_minutes', 'timer_expired', 'reveal_correct_answers',
+                      'shuffled_questions', 'option_shuffles']:
                 if k in st.session_state:
                     if isinstance(st.session_state[k], dict):
                         st.session_state[k].clear()
                     else:
-                        st.session_state[k] = None if k != 'reveal_correct_answers' else False
+                        st.session_state[k] = None
             st.rerun()
 
     if timer_running:
@@ -298,7 +339,7 @@ def take_quiz_section():
 # ───────────────────────────────────────────────
 # Main Layout
 # ───────────────────────────────────────────────
-st.title("NextGen Devops")
+st.title("NextGen Dev")
 
 with st.sidebar:
     if not is_admin():
@@ -348,13 +389,15 @@ with st.sidebar:
                 if st.button(display_label, key=f"select_{real_title}", type=btn_type, use_container_width=True):
                     if real_title != st.session_state.selected_quiz:
                         st.session_state.selected_quiz = real_title
+                        # Reset shuffle & state on quiz change
                         for k in ['user_answers', 'show_answers', 'score', 'quiz_start_time',
-                                  'time_limit_minutes', 'timer_expired', 'reveal_correct_answers']:
+                                  'time_limit_minutes', 'timer_expired', 'reveal_correct_answers',
+                                  'shuffled_questions', 'option_shuffles']:
                             if k in st.session_state:
                                 if isinstance(st.session_state[k], dict):
                                     st.session_state[k].clear()
                                 else:
-                                    st.session_state[k] = None if k != 'reveal_correct_answers' else False
+                                    st.session_state[k] = None
                         st.rerun()
 
             with cols[1]:
