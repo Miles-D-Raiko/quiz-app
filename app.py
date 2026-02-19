@@ -9,9 +9,7 @@ import random
 # Paths & Session State
 # ───────────────────────────────────────────────
 QUIZZES_DIR = Path("quizzes")
-NOTES_DIR   = Path("notes")
 QUIZZES_DIR.mkdir(exist_ok=True)
-NOTES_DIR.mkdir(exist_ok=True)
 
 defaults = {
     'quizzes': {},
@@ -28,13 +26,9 @@ defaults = {
     'admin_logged_in': False,
     'shuffled_questions': None,
     'option_shuffles': {},
-    # Edit quiz
+    # ── New keys for editing ───────────────────────
     'edit_quiz_title': None,
     'edit_quiz_data': None,
-    # Notes
-    'notes': {},
-    'edit_note_id': None,
-    'edit_note_data': None,
 }
 
 for k, v in defaults.items():
@@ -62,15 +56,6 @@ def delete_quiz(title):
     else:
         st.error("Quiz file not found.")
 
-def delete_note(note_id):
-    safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in note_id)
-    path = NOTES_DIR / f"{safe}.json"
-    if path.exists():
-        path.unlink()
-        st.session_state.notes.pop(note_id, None)
-        st.success(f"Note **{note_id}** deleted.")
-        st.rerun()
-
 # ───────────────────────────────────────────────
 # Load / Save
 # ───────────────────────────────────────────────
@@ -85,19 +70,7 @@ def load_quizzes():
         except Exception as e:
             st.warning(f"Could not load {file.name}: {e}")
 
-def load_notes():
-    st.session_state.notes.clear()
-    for file in NOTES_DIR.glob("*.json"):
-        try:
-            with open(file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                note_id = data.get("id", file.stem)
-                st.session_state.notes[note_id] = data
-        except Exception as e:
-            st.warning(f"Could not load note {file.name}: {e}")
-
 load_quizzes()
-load_notes()
 
 def save_quiz(title, data):
     safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
@@ -105,13 +78,6 @@ def save_quiz(title, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     load_quizzes()
-
-def save_note(note_id, data):
-    safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in note_id)
-    path = NOTES_DIR / f"{safe}.json"
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    load_notes()
 
 # ───────────────────────────────────────────────
 # Category & Subcategory helpers
@@ -134,7 +100,7 @@ def get_subcategories_for_depts(selected_depts):
     return sorted(subs)
 
 # ───────────────────────────────────────────────
-# Add new quiz (admin only) — unchanged
+# Add new quiz (admin only)
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
@@ -200,7 +166,7 @@ def submit_quiz_section():
                 st.error(f"Error: {e}")
 
 # ───────────────────────────────────────────────
-# Edit quiz form (admin only) — unchanged
+# Edit quiz form (admin only)
 # ───────────────────────────────────────────────
 def edit_quiz_form():
     if not st.session_state.get('edit_quiz_title'):
@@ -213,6 +179,7 @@ def edit_quiz_form():
 
     edited_title = st.text_input("Quiz Title", value=data.get("quiz_title", title), key="edit_title_input")
 
+    # Department
     all_depts = get_all_departments() or ["Uncategorized"]
     all_depts = sorted(set(all_depts + ["Uncategorized"]))
     current_dept = data.get("department") or data.get("category", "Uncategorized")
@@ -231,9 +198,11 @@ def edit_quiz_form():
 
     final_dept = new_dept or department
 
+    # Subcategory
     current_subcat = data.get("subcategory", "")
     subcategory = st.text_input("Sub-category / Topic (optional)", value=current_subcat, key="edit_subcat_input")
 
+    # JSON content
     current_json = json.dumps(data, indent=2, ensure_ascii=False)
     edited_json = st.text_area("Quiz JSON (edit carefully)", value=current_json, height=400, key="edit_json_area")
 
@@ -242,6 +211,7 @@ def edit_quiz_form():
         if st.button("💾 Save Changes", type="primary"):
             try:
                 new_data = json.loads(edited_json)
+                # Apply changes
                 new_data["quiz_title"] = edited_title.strip() or title
                 if final_dept and final_dept != "Uncategorized":
                     new_data["department"] = final_dept
@@ -252,12 +222,14 @@ def edit_quiz_form():
                 else:
                     new_data.pop("subcategory", None)
 
+                # Save (possibly with new title)
                 save_quiz(edited_title.strip() or title, new_data)
 
+                # Clean up old file if title changed
                 if edited_title.strip() != title:
                     old_safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
                     old_path = QUIZZES_DIR / f"{old_safe}.json"
-                    if old_path.exists():
+                    if old_path.exists() and old_path != QUIZZES_DIR / f"{''.join(c if c.isalnum() or c in ' -_' else '_' for c in edited_title)}.json":
                         old_path.unlink()
 
                 st.success(f"Quiz **{edited_title or title}** updated successfully!")
@@ -277,7 +249,7 @@ def edit_quiz_form():
             st.rerun()
 
 # ───────────────────────────────────────────────
-# Take quiz section — unchanged
+# Take quiz section (unchanged)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
@@ -500,44 +472,68 @@ with st.sidebar:
     st.session_state.selected_departments = selected_depts
     st.session_state.selected_subcategories = selected_subcats
 
-    # ── New section: Key Notes (Admin only) ────────────────────────
-    if is_admin():
-        st.divider()
-        st.header("Key Notes")
-        with st.expander("➕ Add / Edit Key Note", expanded=False):
-            note_title = st.text_input("Note Title", key="new_note_title")
-            note_dept = st.selectbox(
-                "Department",
-                options=[""] + get_all_departments(),
-                key="new_note_dept"
-            )
-            note_subcat = st.text_input("Sub-category (optional)", key="new_note_subcat")
-            note_content = st.text_area(
-                "Content (paste formatted text, markdown works)",
-                height=160,
-                key="new_note_content"
-            )
-
-            if st.button("Save Note", type="primary"):
-                if not note_title.strip() or not note_content.strip():
-                    st.error("Title and content are required.")
-                else:
-                    note_id = note_title.strip()
-                    data = {
-                        "id": note_id,
-                        "title": note_title.strip(),
-                        "department": note_dept if note_dept else None,
-                        "subcategory": note_subcat.strip() or None,
-                        "content": note_content.strip(),
-                        "created": datetime.now().isoformat(),
-                        "last_updated": datetime.now().isoformat(),
-                    }
-                    save_note(note_id, data)
-                    st.success("Note saved!")
-                    st.rerun()
-
     st.header("Available Quizzes")
-    # ... (your existing quiz listing code remains unchanged) ...
+
+    if not selected_depts:
+        st.info("Select at least one department to see quizzes.")
+    else:
+        filtered = {}
+        for title, quiz in st.session_state.quizzes.items():
+            dept = quiz.get("department") or quiz.get("category", "Uncategorized")
+            sub = quiz.get("subcategory", "")
+
+            dept_ok = dept in selected_depts
+            sub_ok = (not selected_subcats) or (sub and sub in selected_subcats)
+
+            if dept_ok and sub_ok:
+                label = title
+                if sub:
+                    label += f" ({sub})"
+                elif dept != "Uncategorized":
+                    label += f" ({dept})"
+                filtered[label] = title
+
+        if not filtered:
+            msg = "No quizzes match the selected "
+            if selected_subcats:
+                msg += f"topics: {', '.join(selected_subcats)}"
+            else:
+                msg += f"department{'s' if len(selected_depts)>1 else ''}"
+            st.info(msg + ".")
+        else:
+            st.caption(f"Found {len(filtered)} quiz{'zes' if len(filtered)!=1 else ''}")
+            for label, real_title in sorted(filtered.items()):
+                cols = st.columns([4, 1, 1])  # Title | Edit | Delete
+                with cols[0]:
+                    active = real_title == st.session_state.selected_quiz
+                    if st.button(label, key=f"q_{real_title}",
+                                 type="primary" if active else "secondary",
+                                 use_container_width=True):
+                        if not active:
+                            st.session_state.selected_quiz = real_title
+                            for k in ['user_answers','show_answers','score','quiz_start_time',
+                                      'time_limit_minutes','timer_expired','reveal_correct_answers',
+                                      'shuffled_questions','option_shuffles']:
+                                if k in st.session_state:
+                                    v = st.session_state[k]
+                                    if isinstance(v, dict):
+                                        v.clear()
+                                    else:
+                                        st.session_state[k] = None
+                            st.rerun()
+
+                with cols[1]:
+                    if is_admin():
+                        if st.button("✏️", key=f"e_{real_title}", help="Edit quiz"):
+                            st.session_state.edit_quiz_title = real_title
+                            st.session_state.edit_quiz_data = st.session_state.quizzes[real_title].copy()
+                            st.rerun()
+
+                with cols[2]:
+                    if is_admin():
+                        if st.button("🗑", key=f"d_{real_title}", help="Delete quiz"):
+                            delete_quiz(real_title)
+                            st.rerun()
 
     st.divider()
 
@@ -552,83 +548,8 @@ if not st.session_state.selected_departments:
 elif st.session_state.selected_quiz:
     take_quiz_section()
 else:
-    st.subheader("Key Notes & Summaries")
+    st.info("Choose a quiz from the list in the sidebar.")
 
-    filtered_notes = []
-    for note in st.session_state.notes.values():
-        dept_match = not st.session_state.selected_departments or \
-                     (note.get("department") in st.session_state.selected_departments)
-        sub_match = not st.session_state.selected_subcategories or \
-                    (note.get("subcategory") and note.get("subcategory") in st.session_state.selected_subcategories)
-
-        if dept_match and sub_match:
-            filtered_notes.append(note)
-
-    if not filtered_notes:
-        st.info("No key notes available for the current department / topic selection.")
-    else:
-        for note in sorted(filtered_notes, key=lambda x: x.get("title", "")):
-            with st.expander(note["title"]):
-                if note.get("department"):
-                    st.caption(f"Department: **{note['department']}**" +
-                               (f" • Topic: **{note['subcategory']}**" if note.get("subcategory") else ""))
-                # Preserve formatting (bold, lists, code, etc.)
-                st.markdown(note["content"], unsafe_allow_html=True)
-                st.caption(f"Last updated: {note.get('last_updated', '—')[:19]}")
-
-                if is_admin():
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("✏️ Edit", key=f"edit_note_{note['id']}"):
-                            st.session_state.edit_note_id = note['id']
-                            st.session_state.edit_note_data = note.copy()
-                            st.rerun()
-                    with col2:
-                        if st.button("🗑 Delete", key=f"del_note_{note['id']}"):
-                            delete_note(note['id'])
-                            st.rerun()
-
-# ── Edit quiz form ──────────────────────────────────────
+# ── Edit form (shown in main area when active) ───────────────
 if is_admin() and st.session_state.get('edit_quiz_title'):
     edit_quiz_form()
-
-# ── Edit note form (simple version) ─────────────────────
-if is_admin() and st.session_state.get('edit_note_id'):
-    nid = st.session_state.edit_note_id
-    data = st.session_state.edit_note_data
-
-    st.subheader(f"Edit Note: {data.get('title')}")
-
-    edited_title = st.text_input("Title", value=data.get("title", ""))
-    edited_dept = st.selectbox("Department", options=[""] + get_all_departments(),
-                               index=0)
-    edited_subcat = st.text_input("Sub-category (optional)", value=data.get("subcategory", ""))
-    edited_content = st.text_area("Content", value=data.get("content", ""), height=300)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("Save Changes", type="primary"):
-            if not edited_title.strip() or not edited_content.strip():
-                st.error("Title and content required.")
-            else:
-                new_data = {
-                    "id": edited_title.strip(),
-                    "title": edited_title.strip(),
-                    "department": edited_dept if edited_dept else None,
-                    "subcategory": edited_subcat.strip() or None,
-                    "content": edited_content.strip(),
-                    "created": data.get("created"),
-                    "last_updated": datetime.now().isoformat(),
-                }
-                save_note(edited_title.strip(), new_data)
-                if edited_title.strip() != nid:
-                    delete_note(nid)
-                st.success("Note updated!")
-                st.session_state.edit_note_id = None
-                st.session_state.edit_note_data = None
-                st.rerun()
-    with c2:
-        if st.button("Cancel"):
-            st.session_state.edit_note_id = None
-            st.session_state.edit_note_data = None
-            st.rerun()
