@@ -21,7 +21,8 @@ defaults = {
     'time_limit_minutes': None,
     'timer_expired': False,
     'reveal_correct_answers': False,
-    'selected_categories': [],
+    'selected_departments': [],
+    'selected_subcategories': [],
     'admin_logged_in': False,
     'shuffled_questions': None,
     'option_shuffles': {},
@@ -34,7 +35,7 @@ for k, v in defaults.items():
 # ───────────────────────────────────────────────
 # Admin helpers
 # ───────────────────────────────────────────────
-ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or better: use st.secrets
+ADMIN_PASSWORD = "quizmaster2025"  # ← CHANGE THIS or use st.secrets!
 
 def is_admin():
     return st.session_state.get("admin_logged_in", False)
@@ -53,7 +54,7 @@ def delete_quiz(title):
         st.error("Quiz file not found.")
 
 # ───────────────────────────────────────────────
-# Load / Save / Categories
+# Load / Save
 # ───────────────────────────────────────────────
 def load_quizzes():
     st.session_state.quizzes.clear()
@@ -68,14 +69,6 @@ def load_quizzes():
 
 load_quizzes()
 
-def get_all_categories():
-    cats = set()
-    for quiz in st.session_state.quizzes.values():
-        cat = quiz.get("category", None)
-        if cat:
-            cats.add(cat)
-    return sorted(cats)
-
 def save_quiz(title, data):
     safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
     path = QUIZZES_DIR / f"{safe_title}.json"
@@ -84,26 +77,50 @@ def save_quiz(title, data):
     load_quizzes()
 
 # ───────────────────────────────────────────────
-# Add new quiz (admin only)
+# Category & Subcategory helpers
+# ───────────────────────────────────────────────
+def get_all_departments():
+    depts = set()
+    for quiz in st.session_state.quizzes.values():
+        dept = quiz.get("department") or quiz.get("category")
+        if dept:
+            depts.add(dept)
+    return sorted(depts)
+
+def get_subcategories_for_depts(selected_depts):
+    subs = set()
+    for quiz in st.session_state.quizzes.values():
+        dept = quiz.get("department") or quiz.get("category")
+        sub = quiz.get("subcategory") or quiz.get("topic")
+        if dept in selected_depts and sub:
+            subs.add(sub)
+    return sorted(subs)
+
+# ───────────────────────────────────────────────
+# Add new quiz (admin only) — now with subcategory field
 # ───────────────────────────────────────────────
 def submit_quiz_section():
     st.header("Add New Quiz (JSON)")
     tab1, tab2 = st.tabs(["Paste JSON", "Upload file"])
-    all_categories = get_all_categories() or ["Uncategorized"]
-    all_categories = sorted(set(all_categories + ["Uncategorized"]))
+
+    all_depts = get_all_departments() or ["Uncategorized"]
+    all_depts = sorted(set(all_depts + ["Uncategorized"]))
 
     with tab1:
         quiz_json = st.text_area("Quiz JSON", height=240, placeholder="Paste valid quiz JSON here...")
         quiz_title = st.text_input("Quiz title (optional)", key="new_quiz_title")
-        category = st.selectbox(
-            "Category / Department",
-            options=all_categories + ["New category..."],
-            key="new_quiz_category_select"
+        department = st.selectbox(
+            "Department / Category",
+            options=all_depts + ["New department..."],
+            key="new_quiz_dept_select"
         )
-        new_category = ""
-        if category == "New category...":
-            new_category = st.text_input("Enter new category name", key="new_category_input").strip()
-        final_category = new_category or category
+        new_dept = ""
+        if department == "New department...":
+            new_dept = st.text_input("Enter new department name", key="new_dept_input").strip()
+
+        subcategory = st.text_input("Sub-category / Topic (optional)", key="new_quiz_subcat").strip()
+
+        final_dept = new_dept or department
 
         if st.button("Submit JSON", type="primary", key="submit_json"):
             if not quiz_json.strip():
@@ -112,10 +129,12 @@ def submit_quiz_section():
             try:
                 data = json.loads(quiz_json)
                 title = quiz_title.strip() or data.get("quiz_title") or f"Quiz_{len(st.session_state.quizzes)+1}"
-                if final_category and final_category != "Uncategorized":
-                    data["category"] = final_category
+                if final_dept and final_dept != "Uncategorized":
+                    data["department"] = final_dept
+                if subcategory:
+                    data["subcategory"] = subcategory
                 if title in st.session_state.quizzes:
-                    if st.checkbox("Overwrite existing quiz?", key="overwrite_confirm"):
+                    if st.checkbox("Overwrite existing quiz?", key="ow_confirm"):
                         save_quiz(title, data)
                         st.success(f"Quiz **{title}** updated!")
                     else:
@@ -128,12 +147,13 @@ def submit_quiz_section():
 
     with tab2:
         uploaded = st.file_uploader("Upload .json file", type=["json"])
-        if uploaded and st.button("Process file", key="submit_file"):
+        if uploaded and st.button("Process uploaded file", key="submit_file"):
             try:
                 data = json.load(uploaded)
                 title = data.get("quiz_title", uploaded.name.replace(".json", ""))
-                if not data.get("category"):
-                    data["category"] = "Uncategorized"
+                if not data.get("department"):
+                    data["department"] = "Uncategorized"
+                # subcategory remains optional
                 if title in st.session_state.quizzes:
                     if st.checkbox("Overwrite existing?", key="ow_file"):
                         save_quiz(title, data)
@@ -147,16 +167,17 @@ def submit_quiz_section():
                 st.error(f"Error: {e}")
 
 # ───────────────────────────────────────────────
-# Take quiz – with dropdown time selection
+# Take quiz section (time via selectbox)
 # ───────────────────────────────────────────────
 def take_quiz_section():
     quiz = st.session_state.quizzes[st.session_state.selected_quiz]
     title = quiz.get('quiz_title', st.session_state.selected_quiz)
-    category = quiz.get('category', 'Uncategorized')
+    dept = quiz.get('department', quiz.get('category', 'Uncategorized'))
+    subcat = quiz.get('subcategory', '')
     original_questions = quiz.get("questions", [])
 
     st.header(f"Quiz: {title}")
-    st.caption(f"Department: **{category}**")
+    st.caption(f"Department: **{dept}**" + (f"  •  Topic: **{subcat}**" if subcat else ""))
 
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.session_state.shuffled_questions = None
@@ -170,8 +191,7 @@ def take_quiz_section():
         st.session_state.option_shuffles = {}
         for orig_i, q in enumerate(original_questions):
             opts = q.get("options", [])
-            if not opts:
-                continue
+            if not opts: continue
             opt_idx = list(range(len(opts)))
             random.shuffle(opt_idx)
             st.session_state.option_shuffles[orig_i] = opt_idx
@@ -180,7 +200,6 @@ def take_quiz_section():
 
     timer_placeholder = st.empty()
 
-    # ── Time limit selection (dropdown) ────────────────────────────────
     if st.session_state.quiz_start_time is None and not st.session_state.show_answers:
         st.info("Optional: choose a time limit for this attempt")
 
@@ -191,11 +210,11 @@ def take_quiz_section():
         ]
 
         selected_time = st.selectbox(
-            "Select Practice Duration:",
+            "Time limit",
             options=time_options,
             index=0,
-            key="time_limit_selectbox",
-            help="Quiz will auto-submit when time expires (if a limit is chosen)."
+            key="time_limit_select",
+            help="Quiz will auto-submit when time expires (if limit chosen)."
         )
 
         if st.button("Start Quiz", type="primary"):
@@ -212,12 +231,10 @@ def take_quiz_section():
                 st.session_state.quiz_start_time = datetime.now()
             st.rerun()
 
-    # ── Timer logic ────────────────────────────────────────────────────
     timer_running = False
     if st.session_state.quiz_start_time is not None and not st.session_state.show_answers:
         elapsed = datetime.now() - st.session_state.quiz_start_time
         remaining_sec = 999_999_999
-
         if st.session_state.get('time_limit_minutes'):
             remaining_sec = max(0, int(st.session_state.time_limit_minutes * 60 - elapsed.total_seconds()))
 
@@ -231,58 +248,48 @@ def take_quiz_section():
                 mins, secs = divmod(remaining_sec, 60)
                 timer_placeholder.caption(f"⏳ **Time remaining: {mins:02d}:{secs:02d}**")
             else:
-                timer_placeholder.caption("⏳ No time limit active")
+                timer_placeholder.caption("⏳ No time limit")
             timer_running = True
 
-    # ── Questions ──────────────────────────────────────────────────────
-    for display_i, q in enumerate(shuffled_questions):
-        st.subheader(f"Q{display_i+1}. {q.get('question', '—')}")
-        orig_index = original_questions.index(q)
+    # Questions display (same as before)
+    for i, q in enumerate(shuffled_questions):
+        st.subheader(f"Q{i+1}. {q.get('question', '—')}")
+        orig_idx = original_questions.index(q)
         opts_orig = q.get("options", [])
-        correct_orig = q.get("correct")
+        correct = q.get("correct")
 
-        if not opts_orig or correct_orig not in opts_orig:
-            st.error(f"Q{display_i+1}: Invalid question data")
+        if not opts_orig or correct not in opts_orig:
+            st.error(f"Q{i+1}: Invalid question data")
             continue
 
-        shuffle_map = st.session_state.option_shuffles.get(orig_index, list(range(len(opts_orig))))
-        opts_display = [opts_orig[j] for j in shuffle_map]
+        shuffle_map = st.session_state.option_shuffles.get(orig_idx, list(range(len(opts_orig))))
+        opts_shuffled = [opts_orig[j] for j in shuffle_map]
 
-        key = f"answer_{display_i}"
+        key = f"ans_{i}"
 
         if not st.session_state.show_answers and not st.session_state.timer_expired:
-            choice = st.radio(
-                "Your answer:",
-                opts_display,
-                index=st.session_state.user_answers.get(display_i, None),
-                key=key,
-                horizontal=False
-            )
+            choice = st.radio("Your answer:", opts_shuffled,
+                              index=st.session_state.user_answers.get(i, None),
+                              key=key, horizontal=False)
             if choice is not None:
-                st.session_state.user_answers[display_i] = opts_display.index(choice)
+                st.session_state.user_answers[i] = opts_shuffled.index(choice)
         else:
-            user_idx = st.session_state.user_answers.get(display_i, None)
-            correct_display_idx = shuffle_map.index(opts_orig.index(correct_orig))
+            user_idx = st.session_state.user_answers.get(i, None)
+            correct_shuf_idx = shuffle_map.index(opts_orig.index(correct))
 
-            st.radio(
-                "Your selection",
-                opts_display,
-                index=user_idx if user_idx is not None else 0,
-                key=f"review_{key}",
-                disabled=True,
-                horizontal=True
-            )
+            st.radio("Your selection:", opts_shuffled,
+                     index=user_idx if user_idx is not None else 0,
+                     key=f"rev_{key}", disabled=True, horizontal=True)
 
             if st.session_state.reveal_correct_answers:
                 if user_idx is None:
                     st.warning("Skipped")
-                    st.markdown(f"**Correct:** {correct_orig}")
-                elif user_idx == correct_display_idx:
+                    st.markdown(f"**Correct:** {correct}")
+                elif user_idx == correct_shuf_idx:
                     st.success("Correct ✓")
                 else:
                     st.error("Incorrect ✗")
-                    st.markdown(f"**Correct:** {correct_orig}")
-
+                    st.markdown(f"**Correct:** {correct}")
                 if expl := q.get("explanation", ""):
                     with st.expander("Explanation"):
                         st.write(expl)
@@ -294,44 +301,41 @@ def take_quiz_section():
     if not quiz_ended:
         if st.button("Submit Quiz", type="primary"):
             correct_count = 0
-            for display_i, q in enumerate(shuffled_questions):
+            for i, q in enumerate(shuffled_questions):
                 orig_i = original_questions.index(q)
-                user_idx = st.session_state.user_answers.get(display_i)
-                if user_idx is None:
-                    continue
-                shuffle_map = st.session_state.option_shuffles.get(orig_i, [])
-                user_orig_idx = shuffle_map[user_idx]
-                if q["options"][user_orig_idx] == q["correct"]:
+                u_idx = st.session_state.user_answers.get(i)
+                if u_idx is None: continue
+                map_ = st.session_state.option_shuffles.get(orig_i, [])
+                orig_choice_idx = map_[u_idx]
+                if q["options"][orig_choice_idx] == q["correct"]:
                     correct_count += 1
             st.session_state.score = (correct_count, len(shuffled_questions))
             st.session_state.show_answers = True
             st.rerun()
     else:
         if st.session_state.score:
-            correct, total = st.session_state.score
-            pct = correct / total * 100 if total > 0 else 0
-            st.success(f"**Score: {correct}/{total}** ({pct:.0f}%)")
+            c, t = st.session_state.score
+            pct = c / t * 100 if t > 0 else 0
+            st.success(f"**Score: {c}/{t}** ({pct:.0f}%)")
 
         if not st.session_state.reveal_correct_answers:
-            if st.button("🔍 Show Correct Answers & Explanations"):
+            if st.button("Show correct answers & explanations"):
                 st.session_state.reveal_correct_answers = True
                 st.rerun()
         else:
-            if st.button("Hide Correct Answers"):
+            if st.button("Hide correct answers"):
                 st.session_state.reveal_correct_answers = False
                 st.rerun()
 
     if quiz_ended:
         if st.button("Restart this quiz"):
-            keys_to_reset = [
-                'user_answers', 'show_answers', 'score', 'quiz_start_time',
-                'time_limit_minutes', 'timer_expired', 'reveal_correct_answers',
-                'shuffled_questions', 'option_shuffles'
-            ]
-            for k in keys_to_reset:
+            for k in ['user_answers','show_answers','score','quiz_start_time',
+                      'time_limit_minutes','timer_expired','reveal_correct_answers',
+                      'shuffled_questions','option_shuffles']:
                 if k in st.session_state:
-                    if isinstance(st.session_state[k], dict):
-                        st.session_state[k].clear()
+                    v = st.session_state[k]
+                    if isinstance(v, dict):
+                        v.clear()
                     else:
                         st.session_state[k] = None
             st.rerun()
@@ -346,77 +350,105 @@ def take_quiz_section():
 st.title("NextGen Dev")
 
 with st.sidebar:
-    # Admin login
     if not is_admin():
         with st.expander("Admin Zone"):
-            pwd = st.text_input("Admin password", type="password", key="admin_pwd")
+            pwd = st.text_input("Admin password", type="password")
             if st.button("Login as Admin"):
                 if pwd.strip() == ADMIN_PASSWORD:
                     st.session_state.admin_logged_in = True
                     st.rerun()
                 else:
-                    st.error("Incorrect password")
+                    st.error("Wrong password")
     else:
-        st.success("🔐 Admin mode")
+        st.success("Admin mode active")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.rerun()
 
     st.divider()
 
-    st.header("Filter by Department")
-    categories = get_all_categories()
+    st.header("Filter Quizzes")
 
-    selected = st.multiselect(
-        "Select department(s)",
-        options=categories,
+    depts = get_all_departments()
+
+    selected_depts = st.multiselect(
+        "Department",
+        options=depts,
         default=[],
-        placeholder="Choose department to see quizzes",
-        help="Quizzes appear only after selecting at least one department.",
-        key="dept_filter"
+        placeholder="Select department(s)",
+        key="dept_multi"
     )
 
-    st.session_state.selected_categories = selected
+    selected_subcats = []
+
+    if selected_depts:
+        possible_subs = get_subcategories_for_depts(selected_depts)
+        if possible_subs:
+            selected_subcats = st.multiselect(
+                "Topic / Sub-category",
+                options=possible_subs,
+                default=[],
+                placeholder="All topics (optional)",
+                key="subcat_multi"
+            )
+        else:
+            st.caption("No sub-categories defined for selected department(s)")
+
+    st.session_state.selected_departments = selected_depts
+    st.session_state.selected_subcategories = selected_subcats
 
     st.header("Available Quizzes")
 
-    if len(selected) == 0:
-        st.info("Select at least one department above to view quizzes.")
+    if not selected_depts:
+        st.info("Select at least one department to see quizzes.")
     else:
-        filtered = {
-            f"{title} ({quiz.get('category', 'Uncategorized')})": title
-            for title, quiz in st.session_state.quizzes.items()
-            if quiz.get("category") in selected
-        }
+        filtered = {}
+        for title, quiz in st.session_state.quizzes.items():
+            dept = quiz.get("department") or quiz.get("category", "Uncategorized")
+            sub = quiz.get("subcategory", "")
+
+            dept_ok = dept in selected_depts
+            sub_ok = (not selected_subcats) or (sub and sub in selected_subcats)
+
+            if dept_ok and sub_ok:
+                label = title
+                if sub:
+                    label += f" ({sub})"
+                elif dept != "Uncategorized":
+                    label += f" ({dept})"
+                filtered[label] = title
 
         if not filtered:
-            st.info(f"No quizzes found for selected department{'s' if len(selected) > 1 else ''}.")
+            msg = "No quizzes match the selected "
+            if selected_subcats:
+                msg += f"topics: {', '.join(selected_subcats)}"
+            else:
+                msg += f"department{'s' if len(selected_depts)>1 else ''}"
+            st.info(msg + ".")
         else:
-            st.caption(f"Found {len(filtered)} quiz{'zes' if len(filtered) != 1 else ''}")
+            st.caption(f"Found {len(filtered)} quiz{'zes' if len(filtered)!=1 else ''}")
             for label, real_title in sorted(filtered.items()):
-                cols = st.columns([5, 1])
+                cols = st.columns([5,1])
                 with cols[0]:
-                    is_active = real_title == st.session_state.selected_quiz
-                    if st.button(label, key=f"sel_{real_title}",
-                                 type="primary" if is_active else "secondary",
+                    active = real_title == st.session_state.selected_quiz
+                    if st.button(label, key=f"q_{real_title}",
+                                 type="primary" if active else "secondary",
                                  use_container_width=True):
-                        if not is_active:
+                        if not active:
                             st.session_state.selected_quiz = real_title
-                            # Reset quiz state
-                            for k in ['user_answers', 'show_answers', 'score',
-                                      'quiz_start_time', 'time_limit_minutes',
-                                      'timer_expired', 'reveal_correct_answers',
-                                      'shuffled_questions', 'option_shuffles']:
+                            for k in ['user_answers','show_answers','score','quiz_start_time',
+                                      'time_limit_minutes','timer_expired','reveal_correct_answers',
+                                      'shuffled_questions','option_shuffles']:
                                 if k in st.session_state:
-                                    val = st.session_state[k]
-                                    if isinstance(val, dict):
-                                        val.clear()
+                                    v = st.session_state[k]
+                                    if isinstance(v, dict):
+                                        v.clear()
                                     else:
                                         st.session_state[k] = None
                             st.rerun()
                 with cols[1]:
                     if is_admin():
-                        if st.button("🗑", key=f"del_{real_title}", help="Delete quiz"):
+                        if st.button("🗑", key=f"d_{real_title}", help="Delete"):
                             delete_quiz(real_title)
                             st.rerun()
 
@@ -425,12 +457,12 @@ with st.sidebar:
     if is_admin():
         submit_quiz_section()
     else:
-        st.caption("Quiz creation is admin-only.")
+        st.caption("Quiz creation restricted to admin.")
 
-# ── Main content ─────────────────────────────────────
-if len(st.session_state.selected_categories) == 0:
-    st.info("Please select at least one department in the sidebar to view available quizzes.")
+# ── Main area ────────────────────────────────────────
+if not st.session_state.selected_departments:
+    st.info("Select at least one department from the sidebar to view available quizzes.")
 elif st.session_state.selected_quiz:
     take_quiz_section()
 else:
-    st.info("Select a quiz from the filtered list in the sidebar.")
+    st.info("Choose a quiz from the list in the sidebar.")
